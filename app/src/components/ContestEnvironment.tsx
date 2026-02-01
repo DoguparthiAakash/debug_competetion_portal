@@ -51,30 +51,6 @@ export const ContestEnvironment: React.FC<ContestEnvironmentProps> = ({ student,
         }
     }, [activeQIndex, questions]);
 
-    // Keep ref to student for socket callbacks to avoid dependency cycles
-    const studentRef = React.useRef(student);
-    useEffect(() => { studentRef.current = student; }, [student]);
-
-    // Ensure server knows about us (Re-register on mount/reconnect)
-    useEffect(() => {
-        if (!socket) return;
-
-        const register = () => {
-            console.log('Registering/Re-registering student with server...');
-            socket.emit('register_student', studentRef.current);
-        };
-
-        // Register immediately on mount (in case we loaded from local storage)
-        if (socket.connected) register();
-
-        // Register on reconnect (in case server restarted)
-        socket.on('connect', register);
-
-        return () => {
-            socket.off('connect', register);
-        };
-    }, [socket]);
-
     // Socket Listeners for Global Events
     useEffect(() => {
         if (!socket) return;

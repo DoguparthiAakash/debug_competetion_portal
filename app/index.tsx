@@ -24,16 +24,41 @@ const AppContent = () => {
   }, []);
 
   // Sync with Server (Register/Update)
+  const studentRef = React.useRef(student);
+  useEffect(() => { studentRef.current = student; }, [student]);
+
   useEffect(() => {
-    if (socket && isConnected) {
-      if (isAdmin) {
-        socket.emit('admin_login');
-      } else if (student) {
-        // First time register? Or just always update last seen
-        socket.emit('register_student', student);
-      }
+    if (!socket) return;
+
+    if (isAdmin) {
+      const handleConnect = () => socket.emit('admin_login');
+      if (socket.connected) handleConnect();
+      socket.on('connect', handleConnect);
+      return () => { socket.off('connect', handleConnect); };
+    } else {
+      const register = () => {
+        if (studentRef.current) {
+          console.log('Registering/Re-registering student with server (Global)...');
+          socket.emit('register_student', studentRef.current);
+        }
+      };
+
+      if (socket.connected && student) register();
+
+      socket.on('connect', register);
+      // Also periodic sync just in case server restarts silently or drops validation
+      const interval = setInterval(() => {
+        if (socket.connected && studentRef.current) {
+          socket.emit('register_student', studentRef.current);
+        }
+      }, 5000); // Pulse every 5 seconds to ensure visibility
+
+      return () => {
+        socket.off('connect', register);
+        clearInterval(interval);
+      };
     }
-  }, [socket, isConnected, student, isAdmin]);
+  }, [socket, isAdmin]); // Removed student/isConnected dependency here, managed via ref and connect event
 
 
   // Listen for Admin Commands
