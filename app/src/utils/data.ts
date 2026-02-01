@@ -56,8 +56,35 @@ export const QUESTION_DB: Question[] = [
         description: 'Copying the list didn\'t work as expected.',
         language: 'python',
         round: 2,
-        buggyCode: `original = [[1, 2], [3, 4]]\ncopy = list(original)\ncopy[0][0] = 99\nprint(original[0][0]) # Modified original too!`,
+        buggyCode: `original = [[1, 2], [3, 4]]
+copy = list(original)
+copy[0][0] = 99
+print(original[0][0]) # Modified original too!`,
         correctSnippet: 'deepcopy'
+    },
+    {
+        id: 'p_r2_2',
+        title: 'Dictionary Key Error',
+        description: 'Trying to use a list as a dictionary key.',
+        language: 'python',
+        round: 2,
+        buggyCode: `my_dict = {}
+key = [1, 2, 3]
+my_dict[key] = "value" # TypeError: unhashable type: 'list'`,
+        correctSnippet: 'tuple(key)'
+    },
+    {
+        id: 'p_r2_3',
+        title: 'Late Binding Closures',
+        description: 'Lambda functions capturing loop variable by reference.',
+        language: 'python',
+        round: 2,
+        buggyCode: `funcs = []
+for i in range(3):
+    funcs.append(lambda: i)
+
+print([f() for f in funcs]) # [2, 2, 2] instead of [0, 1, 2]`,
+        correctSnippet: 'lambda i=i: i'
     },
     // ROUND 3 - PYTHON
     {
@@ -66,13 +93,30 @@ export const QUESTION_DB: Question[] = [
         description: 'Infinite recursion in factorial.',
         language: 'python',
         round: 3,
-        buggyCode: `def factorial(n):\n    if n == 1:\n        return 1\n    return n * factorial(n)\n\nprint(factorial(5))`,
+        buggyCode: `def factorial(n):
+    if n == 1:
+        return 1
+    return n * factorial(n)
+
+print(factorial(5))`,
         correctSnippet: 'n - 1'
+    },
+    {
+        id: 'p_r3_2',
+        title: 'Generator Exhaustion',
+        description: 'Trying to iterate over a generator twice.',
+        language: 'python',
+        round: 3,
+        buggyCode: `numbers = (x for x in range(3))
+sum1 = sum(numbers)
+sum2 = sum(numbers) # Generator is already empty!
+print(sum1, sum2) # 3 0`,
+        correctSnippet: 'list(numbers)'
     }
 ];
 
 export const ROUND_CONFIG = {
-    1: { name: "Level 1: Novice", count: 3, duration: 30 * 60 },
+    1: { name: "Level 1: Novice", count: 5, duration: 30 * 60 },
     2: { name: "Level 2: Apprentice", count: 3, duration: 45 * 60 },
-    3: { name: "Level 3: Master", count: 3, duration: 60 * 60 },
+    3: { name: "Level 3: Master", count: 2, duration: 60 * 60 },
 };
