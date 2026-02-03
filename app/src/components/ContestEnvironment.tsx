@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from '../utils/SocketContext';
 import { LogOut, User, Play, Pause, StopCircle, MessageSquare, X } from 'lucide-react';
-import { Student, Question } from '../utils/types';
-import { ROUND_CONFIG } from '../utils/data';
-import { generateQuestions, mockExecuteCode } from '../utils/helpers';
+import { Student, Question, LevelConfig } from '../utils/types';
+import { ROUND_CONFIG } from '../utils/data'; // Keep for names/defaults
+import { mockExecuteCode } from '../utils/helpers';
 import { FullScreenGuard } from './FullScreenGuard';
 import { handleAdminAuth } from './AdminButton';
 
@@ -22,14 +22,61 @@ export const ContestEnvironment: React.FC<ContestEnvironmentProps> = ({ student,
     const [isRunning, setIsRunning] = useState(false);
     const [contestStatus, setContestStatus] = useState<"active" | "paused" | "ended">("active");
     const [broadcastMsg, setBroadcastMsg] = useState<string | null>(null);
+    const [levelConfig, setLevelConfig] = useState<LevelConfig>({
+        1: { duration: 30 },
+        2: { duration: 45 },
+        3: { duration: 60 }
+    });
 
-    // Initialize Round
+    // Fetch Questions & Config
     useEffect(() => {
-        const qs = generateQuestions(student.language, student.currentRound);
-        setQuestions(qs);
+        if (!socket) return;
 
-        // Set timer based on config, account for elapsed time if reload
-        const roundDuration = (ROUND_CONFIG[student.currentRound as keyof typeof ROUND_CONFIG] || ROUND_CONFIG[1]).duration;
+        socket.emit('get_student_questions');
+
+        const handleQuestions = (qs: Question[]) => {
+            console.log("Received questions from server:", qs);
+            if (qs && qs.length > 0) {
+                // Filter by current round logic (Easy=1, Medium=2, Hard=3) 
+                // In DB we stored 'difficulty' as 'easy'/'medium'/'hard'.
+                // We need to map round to difficulty.
+                const roundDiffMap: { [key: number]: string } = { 1: 'easy', 2: 'medium', 3: 'hard' };
+                const currentDiff = roundDiffMap[student.currentRound] || 'easy';
+
+                const filtered = qs.filter(q => q.difficulty === currentDiff); // Assuming backend sends ALL assigned questions
+                // Wait, backend assigned logic was: Easy->1, Med->2, etc.
+                // But the 'difficulty' field is text.
+                // Let's filter client side for now.
+
+                // If the 'round' property is missing in DB questions (we added 'difficulty' instead), map it.
+                const mapped = filtered.map(q => ({
+                    ...q,
+                    round: student.currentRound // It's for the current round
+                }));
+
+                setQuestions(mapped);
+            }
+        };
+
+        const handleLevelConfig = (cfg: LevelConfig) => {
+            setLevelConfig(cfg);
+        };
+
+        socket.on('student_questions', handleQuestions);
+        socket.on('level_config_update', handleLevelConfig);
+
+        return () => {
+            socket.off('student_questions', handleQuestions);
+            socket.off('level_config_update', handleLevelConfig);
+        };
+    }, [socket, student.currentRound]);
+
+    // Timer Logic - Updated for Dynamic Config
+    useEffect(() => {
+        // use level config
+        const durationMins = levelConfig[student.currentRound]?.duration || 30;
+        const roundDuration = durationMins * 60;
+
         const now = Date.now();
 
         if (!student.roundStartTime) {
@@ -40,7 +87,7 @@ export const ContestEnvironment: React.FC<ContestEnvironmentProps> = ({ student,
             const elapsed = Math.floor((now - student.roundStartTime) / 1000);
             setTimeLeft(Math.max(0, roundDuration - elapsed));
         }
-    }, [student.currentRound]);
+    }, [student.currentRound, student.roundStartTime, levelConfig]); // Re-calc if config changes!
 
     // Load code for active question
     useEffect(() => {

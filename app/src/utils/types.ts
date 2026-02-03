@@ -29,3 +29,6 @@ export interface Question {
     buggyCode: string;
     correctSnippet: string; // Used for heuristic checking in this simulation
 }
+export interface LevelConfig {
+    [level: number]: { duration: number }; // Duration in minutes
+}
