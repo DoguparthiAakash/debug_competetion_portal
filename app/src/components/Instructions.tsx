@@ -1,38 +1,47 @@
 import React from 'react';
-import { Maximize, ShieldAlert, Clock, Code } from 'lucide-react';
-import { AdminButton } from './AdminButton';
+import { Play } from 'lucide-react';
+import { Student } from '../utils/types';
 
 interface InstructionsProps {
+    round: number;
     onStart: () => void;
-    onAdminLogin: () => void;
 }
 
-export const Instructions: React.FC<InstructionsProps> = ({ onStart, onAdminLogin }) => (
-    <div className="min-h-screen flex items-center justify-center p-4">
-        <AdminButton onLogin={onAdminLogin} />
-        <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-3xl border-t-4 border-yellow-500">
-            <h2 className="text-3xl font-bold mb-6 text-slate-800">Contest Rules & Environment</h2>
-            <div className="space-y-4 text-gray-700 mb-8">
-                <div className="flex items-start gap-3">
-                    <Maximize className="text-blue-600 mt-1 shrink-0" />
-                    <p><strong>Strict Full-Screen:</strong> The contest forces full-screen mode. Exiting full-screen, switching tabs, or minimizing the browser will be recorded as a violation.</p>
+export const Instructions: React.FC<InstructionsProps> = ({ round, onStart }) => {
+    const questionCount = round === 1 ? 4 : round === 2 ? 3 : 2;
+
+    return (
+        <div className="absolute inset-0 z-40 bg-slate-900/80 backdrop-blur-md flex items-center justify-center">
+            <div className="bg-slate-800 rounded-2xl p-8 max-w-lg w-full text-center border border-slate-700 shadow-2xl">
+                <div className="inline-block px-4 py-1.5 rounded-full bg-blue-500/10 text-blue-400 font-bold text-sm uppercase tracking-wider mb-6 border border-blue-500/20">
+                    Round {round}
                 </div>
-                <div className="flex items-start gap-3">
-                    <ShieldAlert className="text-red-600 mt-1 shrink-0" />
-                    <p><strong>3 Strike Rule:</strong> If you trigger more than 3 violations, your contest will be <strong>IMMEDIATELY TERMINATED</strong>.</p>
+
+                <h1 className="text-3xl font-bold text-white mb-4">Ready to Start?</h1>
+                <p className="text-slate-400 text-lg mb-8">
+                    You have <span className="text-white font-bold">{questionCount} questions</span> in this round.
+                    The timer will begin as soon as you proceed.
+                </p>
+
+                <div className="space-y-3 mb-8 text-sm text-slate-500">
+                    <div className="flex items-center gap-2 justify-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Full-screen mode enforced
+                    </div>
+                    <div className="flex items-center gap-2 justify-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        No tab switching allowed
+                    </div>
                 </div>
-                <div className="flex items-start gap-3">
-                    <Clock className="text-green-600 mt-1 shrink-0" />
-                    <p><strong>Round Timers:</strong> Rounds are sequential. R1 (20m) &rarr; R2 (30m) &rarr; R3 (40m). The timer never stops.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                    <Code className="text-purple-600 mt-1 shrink-0" />
-                    <p><strong>Docker Sandbox:</strong> Your code runs in an isolated container. No internet access allowed.</p>
-                </div>
+
+                <button
+                    onClick={onStart}
+                    className="group relative inline-flex items-center justify-center px-8 py-3 text-lg font-bold text-white transition-all duration-200 bg-blue-600 rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
+                >
+                    <span>Start Round {round}</span>
+                    <Play size={18} className="ml-2 group-hover:translate-x-1 transition-transform" fill="currentColor" />
+                </button>
             </div>
-            <button onClick={onStart} className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xl font-bold py-4 rounded-lg shadow-lg flex justify-center items-center gap-3">
-                Enter Safe Mode & Start Round 1
-            </button>
         </div>
-    </div>
-);
+    );
+};

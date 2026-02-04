@@ -1,7 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { User, LogOut, Unlock, FileSpreadsheet, Trash2, XCircle, Code, Clock, ArrowRight, ArrowLeft, Download, Upload, AlertOctagon, Edit, Save, X, Radio, MessageSquare, Pause, Play, StopCircle, Info, Calendar } from 'lucide-react';
 import { Student } from '../utils/types';
 import { useSocket } from '../utils/SocketContext';
+import api from '../utils/api';
 
 interface AdminDashboardProps {
     student: Student | null;
@@ -21,18 +22,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ student: localSt
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Student>>({});
     const [showFullDetails, setShowFullDetails] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const fetchDashboard = async () => {
+        try {
+            const res = await api.get('/admin/dashboard');
+            if (res.data.success) {
+                // Map backend student to frontend student type if needed
+                // The backend returns a summary dashboard structure.
+                // We might need to fetch detailed student list or adapt.
+                // adminRoutes: /dashboard returns { dashboard: [...] } with summary fields.
+                // But we need 'codeCache' etc for inspector. 
+                // Let's modify adminRoutes to return full objects or add a new endpoint?
+                // For now, let's assume /dashboard returned summary, but we need full data for inspector.
+                // Actually, relying on socket for live updates is fine, but initial load should be robust.
+                // Let's rely on socket for 'all_students' for now as it sends full objects?
+                // Wait, server.js emits 'all_students' with `await Student.find({})`. That sends full objects.
+                // So socket is fine for fetching full data!
+                // But let's add an explicit fetch via API for robustness.
+                // I'll stick to Socket for 'all_students' as per original design, but use API for actions.
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     // Sync All Students
-    React.useEffect(() => {
+    useEffect(() => {
         if (!socket) return;
+        socket.emit('admin_login');
 
-        socket.emit('admin_login'); // Ensure we are registered as admin
-
-        const handleAll = (students: Student[]) => {
-            setAllStudents(students);
-        };
-
+        const handleAll = (students: Student[]) => setAllStudents(students);
         const handleUpdate = (updated: Student) => {
             setAllStudents(prev => {
                 const idx = prev.findIndex(s => s.rollNumber === updated.rollNumber);
@@ -44,9 +63,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ student: localSt
                 return [...prev, updated];
             });
         };
-
         const handleContestStatus = (config: any) => {
-            if (config && config.status) setContestStatus(config.status);
+            if (config?.status) setContestStatus(config.status);
         };
 
         socket.on('all_students', handleAll);
@@ -58,55 +76,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ student: localSt
             socket.off('student_update', handleUpdate);
             socket.off('contest_status', handleContestStatus);
         };
-    }, [socket]); // Removed selectedRollNumber dependency to prevent listener churn
+    }, [socket]);
 
-    // Override onUpdateStudent to send via socket
-    const handleUpdateStudent = (s: Student) => {
-        // Optimistic update
-        setAllStudents(prev => prev.map(p => p.rollNumber === s.rollNumber ? s : p));
+    // Handle updates via API
+    const handleUpdateStudent = async (id: string, updates: Partial<Student>) => {
+        try {
+            // Optimistic update
+            setAllStudents(prev => prev.map(s => s._id === id || s.rollNumber === id ? { ...s, ...updates } : s));
 
-        // Send command to server
-        if (socket && s.socketId) socket.emit('admin_command', { targetSocketId: s.socketId, command: 'force_update', payload: s });
-
-        // Also call local prop if it matches local
-        if (localStudent && s.rollNumber === localStudent.rollNumber) {
-            onUpdateStudent(s);
+            // API Call
+            const res = await api.put(`/admin/students/${id}`, updates);
+            if (res.data.success) {
+                // Server might emit 'student_update' which will correct any drift
+                const updated = res.data.student;
+                // If local user is the one being updated (rare in admin view, but possible)
+                if (localStudent && updated.rollNumber === localStudent.rollNumber) {
+                    onUpdateStudent(updated);
+                }
+            }
+        } catch (error) {
+            console.error("Update failed", error);
+            alert("Failed to update student.");
         }
     };
 
     const student = allStudents.find(s => s.rollNumber === selectedRollNumber) || null;
-    const totalScore = student ? Object.values(student.scores).reduce((a: number, b: number) => a + b, 0) : 0;
-
-    const handleExportState = () => {
-        if (!student) return;
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(student, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `contest_state_${student.rollNumber}.json`);
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-    };
-
-    const handleImportState = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const json = JSON.parse(e.target?.result as string);
-                if (json.rollNumber && json.contestStatus) {
-                    onUpdateStudent(json);
-                    alert("State imported successfully!");
-                } else {
-                    alert("Invalid state file.");
-                }
-            } catch (err) {
-                alert("Error parsing JSON.");
-            }
-        };
-        reader.readAsText(file);
-    };
+    const totalScore = student ? Object.values(student.scores || {}).reduce((a: number, b: number | null | undefined) => (a || 0) + (b || 0), 0) : 0;
 
     const handleEditStart = () => {
         if (!student) return;
@@ -115,49 +110,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ student: localSt
     };
 
     const handleEditSave = () => {
-        if (!student) return;
-        handleUpdateStudent({ ...student, ...editForm } as Student);
+        if (!student || !student._id) return;
+        handleUpdateStudent(student._id, editForm);
         setIsEditing(false);
     };
 
     const handleForceSubmit = () => {
-        if (confirm("Are you sure you want to FORCE SUBMIT this contest? The student will be moved to the Result screen immediately.")) {
-            if (student) handleUpdateStudent({ ...student, contestStatus: 'SUBMITTED', roundStartTime: null });
+        if (student?._id && confirm("FORCE SUBMIT this contest?")) {
+            handleUpdateStudent(student._id, { contestStatus: 'SUBMITTED' });
         }
     };
 
     const handleDisqualify = () => {
-        const reason = prompt("Enter disqualification reason:", "Violation of rules");
-        if (reason && student) {
-            // But for now we set status to TERMINATED. 
-            // Ideally we'd store the reason in the student object.
-            // For this iteration, we'll just set terminated.
-            handleUpdateStudent({ ...student, contestStatus: 'TERMINATED', violationCount: 99 });
+        if (student?._id && confirm("DISQUALIFY this student?")) {
+            handleUpdateStudent(student._id, { contestStatus: 'TERMINATED', isDisqualified: true });
+        }
+    };
+
+    const handleUnlock = () => {
+        if (student?._id) {
+            handleUpdateStudent(student._id, { contestStatus: 'ACTIVE', isDisqualified: false, violationAttempts: 0 });
         }
     };
 
     const handleAddTime = (minutes: number) => {
-        if (!student || !student.roundStartTime) return;
-        const newStartTime = student.roundStartTime + (minutes * 60 * 1000); // Adding minutes effectively reduces elapsed time, so we ADD to start time? No.
-        // If we want to ADD time to the countdown, we need to make the start time LATER? No.
-        // Timer = Duration - (Now - StartTime).
-        // To increase Timer, we need to decrease (Now - StartTime).
-        // So we need to increase StartTime. 
-        // Example: Start = 10:00. Now = 10:10. Elapsed = 10m. Left = 20-10 = 10m.
-        // Add 5m. Left should be 15m.
-        // 15 = 20 - (Now - NewStart).
-        // Now - NewStart = 5. NewStart = Now - 5 = 10:05.
-        // OldStart was 10:00. NewStart is 10:05. So we ADD 5 mins to StartTime.
-        handleUpdateStudent({ ...student, roundStartTime: student.roundStartTime + (minutes * 60 * 1000) });
+        if (!student?._id || !student.currentRound) return;
+        const currentStart = student.roundStartedAt?.[student.currentRound];
+        if (!currentStart) return;
+
+        const newStartTime = new Date(currentStart).getTime() + (minutes * 60 * 1000);
+
+        const newStartedAt = { ...student.roundStartedAt, [student.currentRound]: new Date(newStartTime).toISOString() };
+        handleUpdateStudent(student._id, { roundStartedAt: newStartedAt });
     };
 
     const handleRoundChange = (delta: number) => {
-        if (!student) return;
+        if (!student?._id) return;
         const newRound = Math.max(1, Math.min(3, student.currentRound + delta));
-        handleUpdateStudent({ ...student, currentRound: newRound, roundStartTime: Date.now() }); // Reset timer for new round
+        handleUpdateStudent(student._id, { currentRound: newRound });
     };
 
-    // Global Actions
     const handleBroadcast = () => {
         if (!broadcastMsg.trim() || !socket) return;
         socket.emit('admin_broadcast', broadcastMsg);
@@ -167,400 +159,213 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ student: localSt
 
     const handleSetGlobalStatus = (status: "active" | "paused" | "ended") => {
         if (!socket) return;
-        if (confirm(`Are you sure you want to set global status to ${status.toUpperCase()}?`)) {
+        if (confirm(`Set global status to ${status.toUpperCase()}?`)) {
             socket.emit('admin_set_contest_status', status);
-            // Optimistic update
             setContestStatus(status);
         }
     };
 
-    const handleExportAll = () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(allStudents, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `contest_full_export_${Date.now()}.json`);
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-    };
-
     const handleExportCSV = () => {
-        if (allStudents.length === 0) {
-            alert("No data to export.");
-            return;
-        }
-
-        const headers = ["Roll Number", "Full Name", "College", "Status", "Round", "Total Score"];
-        // Add headers for potential questions if needed, but for summary, this is good.
-
-        const rows = allStudents.map(s => {
-            const score = Object.values(s.scores).reduce((a: number, b: number) => a + b, 0);
-            return [
-                s.rollNumber,
-                `"${s.fullName}"`, // Quote incase of commas
-                `"${s.college}"`,
-                s.contestStatus,
-                s.currentRound,
-                score
-            ].join(",");
-        });
-
-        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `contest_results_${Date.now()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        window.open(`${api.defaults.baseURL}/admin/export-excel`, '_blank');
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 p-8 font-mono">
-            <div className="max-w-4xl mx-auto">
-                <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
-                    <div className="flex items-center gap-3">
-                        <User size={32} className="text-blue-500" />
-                        <h1 className="text-2xl font-bold">Admin Console</h1>
-                    </div>
-                    <button onClick={onExit} className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded text-sm flex items-center gap-2">
-                        <LogOut size={16} /> Exit
-                    </button>
-                    <button onClick={() => setSelectedRollNumber(null)} className="ml-4 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm flex items-center gap-2">
-                        <ArrowLeft size={16} /> All Students
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (socket) {
-                                socket.emit('admin_login');
-                                alert("Refreshed data from server.");
-                            }
-                        }}
-                        className="ml-4 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm flex items-center gap-2"
-                        title="Force refresh data from server"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
-                        Refresh
-                    </button>
-                </div>
-
-                {/* Global Controls Bar */}
-                <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-8 flex flex-col md:flex-row gap-4 justify-between items-center">
+        <div className="min-h-screen bg-black text-slate-200 p-8 font-sans selection:bg-blue-500/30">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-8 border-b border-zinc-800 pb-6">
                     <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Global Status:</span>
-                            <span className={`px-2 py-1 rounded text-xs font-bold ${contestStatus === 'active' ? 'bg-emerald-900 text-emerald-300' : contestStatus === 'paused' ? 'bg-amber-900 text-amber-300' : 'bg-red-900 text-red-300'}`}>
-                                {contestStatus.toUpperCase()}
-                            </span>
+                        <div className="p-2 bg-blue-600/10 rounded-lg border border-blue-500/20">
+                            <User size={24} className="text-blue-500" />
                         </div>
-                        <div className="flex gap-1">
-                            {contestStatus !== 'active' && (
-                                <button onClick={() => handleSetGlobalStatus('active')} className="bg-emerald-700 hover:bg-emerald-600 p-2 rounded text-emerald-100" title="Resume Contest">
-                                    <Play size={16} />
-                                </button>
-                            )}
-                            {contestStatus === 'active' && (
-                                <button onClick={() => handleSetGlobalStatus('paused')} className="bg-amber-700 hover:bg-amber-600 p-2 rounded text-amber-100" title="Pause Contest">
-                                    <Pause size={16} />
-                                </button>
-                            )}
-                            {contestStatus !== 'ended' && (
-                                <button onClick={() => handleSetGlobalStatus('ended')} className="bg-red-700 hover:bg-red-600 p-2 rounded text-red-100" title="End Contest">
-                                    <StopCircle size={16} />
-                                </button>
-                            )}
+                        <div>
+                            <h1 className="text-2xl font-bold text-white tracking-tight">Admin Console</h1>
+                            <div className="text-xs text-slate-500 font-mono">KANAL 2K26 · CONTROLLER</div>
                         </div>
                     </div>
-
-                    <div className="flex-1 flex gap-2 w-full md:w-auto">
-                        <input
-                            value={broadcastMsg}
-                            onChange={e => setBroadcastMsg(e.target.value)}
-                            placeholder="Broadcast message to all students..."
-                            className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
-                        />
-                        <button onClick={handleBroadcast} disabled={!broadcastMsg.trim()} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm text-white flex items-center gap-2">
-                            <MessageSquare size={16} /> Send
+                    <div className="flex gap-4">
+                        <button onClick={() => setSelectedRollNumber(null)} className="bg-zinc-900 hover:bg-zinc-800 px-4 py-2 rounded-lg text-sm font-medium border border-zinc-800 transition-colors flex items-center gap-2">
+                            <ArrowLeft size={16} /> Dashboard
+                        </button>
+                        <button onClick={onExit} className="bg-red-900/10 hover:bg-red-900/20 text-red-500 px-4 py-2 rounded-lg text-sm font-medium border border-red-500/20 transition-colors flex items-center gap-2">
+                            <LogOut size={16} /> Exit
                         </button>
                     </div>
+                </div>
 
-                    <div>
-                        <div className="flex gap-2">
-                            <button onClick={handleExportCSV} className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded text-sm text-white flex items-center gap-2">
-                                <FileSpreadsheet size={16} /> Export CSV
-                            </button>
-                            <button onClick={handleExportAll} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm text-white flex items-center gap-2">
-                                <Download size={16} /> Export JSON
-                            </button>
+                {/* Global Controls */}
+                <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-5 mb-8 flex flex-wrap gap-6 justify-between items-center backdrop-blur-sm">
+                    <div className="flex items-center gap-6">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Contest Status</span>
+                            <div className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${contestStatus === 'active' ? 'bg-emerald-500 animate-pulse' : contestStatus === 'paused' ? 'bg-amber-500' : 'bg-red-500'}`}></span>
+                                <span className={`text-sm font-bold ${contestStatus === 'active' ? 'text-white' : 'text-slate-300'}`}>
+                                    {contestStatus.toUpperCase()}
+                                </span>
+                            </div>
                         </div>
+                        <div className="flex gap-1 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+                            <button onClick={() => handleSetGlobalStatus('active')} className={`p-2 rounded-md transition-all ${contestStatus === 'active' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20' : 'hover:bg-zinc-800 text-slate-500'}`} title="Start Contest"><Play size={16} fill="currentColor" /></button>
+                            <button onClick={() => handleSetGlobalStatus('paused')} className={`p-2 rounded-md transition-all ${contestStatus === 'paused' ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/20' : 'hover:bg-zinc-800 text-slate-500'}`} title="Pause Contest"><Pause size={16} fill="currentColor" /></button>
+                            <button onClick={() => handleSetGlobalStatus('ended')} className={`p-2 rounded-md transition-all ${contestStatus === 'ended' ? 'bg-red-600 text-white shadow-lg shadow-red-900/20' : 'hover:bg-zinc-800 text-slate-500'}`} title="End Contest"><StopCircle size={16} fill="currentColor" /></button>
+                        </div>
+                    </div>
+                    <div className="flex-1 flex gap-2 min-w-[300px]">
+                        <input value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="Type a broadcast message..." className="flex-1 bg-black border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all placeholder:text-zinc-600" />
+                        <button onClick={handleBroadcast} className="bg-blue-600 hover:bg-blue-500 px-6 py-2.5 rounded-lg text-sm font-bold text-white transition-all shadow-lg shadow-blue-900/20">Send</button>
+                    </div>
+                    <div>
+                        <button onClick={handleExportCSV} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-zinc-600 px-5 py-2.5 rounded-lg text-sm font-medium text-white gap-2 flex items-center transition-all">
+                            <FileSpreadsheet size={16} className="text-emerald-500" /> Export Data
+                        </button>
                     </div>
                 </div>
 
+                {/* Main View */}
                 {student ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Student Info */}
-                        <div
-                            className="bg-slate-900 p-6 rounded-lg border border-slate-800 relative cursor-pointer hover:border-blue-500 transition-colors group"
-                            onClick={() => setShowFullDetails(true)}
-                        >
-                            <div className="flex justify-between items-start mb-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+                        {/* Student Details Card */}
+                        <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800 flex flex-col h-full">
+                            <div className="flex justify-between items-start mb-6">
                                 <div>
-                                    <h2 className="text-xl font-bold text-emerald-400 group-hover:text-blue-400 transition-colors">{student.fullName}</h2>
-                                    <p className="text-xs text-slate-500 font-mono">{student.rollNumber}</p>
+                                    <h2 className="text-2xl font-bold text-white mb-1">{student.fullName}</h2>
+                                    <p className="text-sm text-slate-400 font-mono">{student.rollNumber}</p>
                                 </div>
-                                <button onClick={(e) => { e.stopPropagation(); handleEditStart(); }} className="text-slate-500 hover:text-blue-400" title="Edit Student Details">
-                                    <Edit size={16} />
-                                </button>
+                                <button onClick={handleEditStart} className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"><Edit size={16} className="text-slate-500 hover:text-blue-400" /></button>
                             </div>
-                            <div className="space-y-3 text-sm">
-                                <div className="flex justify-between"><span className="text-slate-500">Email:</span> <span className="truncate max-w-[150px]">{student.email || '-'}</span></div>
-                                <div className="flex justify-between"><span className="text-slate-500">Started:</span> {student.roundStartTime ? new Date(student.roundStartTime).toLocaleTimeString() : '-'}</div>
-                                <div className="flex justify-between"><span className="text-slate-500">Ended:</span> {student.submissionTime ? new Date(student.submissionTime).toLocaleTimeString() : '-'}</div>
+
+                            <div className="space-y-4 text-sm flex-1">
+                                <DetailRow label="Current Status" value={student.contestStatus} highlight={student.contestStatus === 'ACTIVE' ? 'text-emerald-400' : 'text-slate-200'} />
+                                <DetailRow label="Department" value={student.department || 'N/A'} />
+                                <DetailRow label="Language" value={student.language.toUpperCase()} />
+                                <DetailRow label="Current Round" value={`Round ${student.currentRound}`} />
+                                <DetailRow label="Current Score" value={String(totalScore)} highlight="text-white font-bold" />
+                                <div className="p-3 bg-red-900/10 border border-red-500/10 rounded-lg mt-4">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-red-400 font-bold uppercase text-xs">Violations</span>
+                                        <span className="text-2xl font-mono font-bold text-red-500">{student.violationAttempts}</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-blue-400 flex items-center gap-1">
-                                View Full Details <ArrowRight size={12} />
+
+                            {/* Controls */}
+                            <div className="mt-6 grid grid-cols-2 gap-3 pt-6 border-t border-zinc-800">
+                                <button onClick={() => handleAddTime(5)} className="bg-zinc-800 p-3 rounded-lg text-xs font-bold hover:bg-zinc-700 border border-zinc-700 transition-all flex justify-center gap-1">+5 MIN</button>
+                                <button onClick={() => handleRoundChange(1)} className="bg-zinc-800 p-3 rounded-lg text-xs font-bold hover:bg-zinc-700 border border-zinc-700 transition-all">NEXT ROUND</button>
+
+                                {student.isDisqualified ? (
+                                    <button onClick={handleUnlock} className="col-span-2 bg-amber-600 hover:bg-amber-500 p-3 rounded-lg text-white font-bold flex justify-center items-center gap-2 shadow-lg shadow-amber-900/20"><Unlock size={16} /> UNLOCK STUDENT</button>
+                                ) : (
+                                    <>
+                                        <button onClick={handleForceSubmit} className="bg-emerald-900/30 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-900/50 p-3 rounded-lg text-xs font-bold transition-all">FORCE SUBMIT</button>
+                                        <button onClick={handleDisqualify} className="bg-red-900/30 text-red-500 border border-red-500/30 hover:bg-red-900/50 p-3 rounded-lg text-xs font-bold transition-all">DISQUALIFY</button>
+                                    </>
+                                )}
                             </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="bg-slate-900 p-6 rounded-lg border border-slate-800 flex flex-col gap-4">
-                            <h2 className="text-xl font-bold mb-2 text-blue-400">Controls</h2>
-
-
-
-                            {/* Time & Round Controls */}
-                            <div className="bg-slate-800 p-4 rounded-lg">
-                                <h3 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-                                    <Clock size={14} /> Session Management
-                                </h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => handleAddTime(5)} className="bg-slate-700 hover:bg-slate-600 p-2 rounded text-xs">
-                                        +5 Mins
-                                    </button>
-                                    <button onClick={() => handleAddTime(-5)} className="bg-slate-700 hover:bg-slate-600 p-2 rounded text-xs">
-                                        -5 Mins
-                                    </button>
-                                    <button onClick={() => handleRoundChange(-1)} disabled={student.currentRound <= 1} className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 p-2 rounded text-xs flex items-center justify-center gap-1">
-                                        <ArrowLeft size={12} /> Prev Round
-                                    </button>
-                                    <button onClick={() => handleRoundChange(1)} disabled={student.currentRound >= 3} className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 p-2 rounded text-xs flex items-center justify-center gap-1">
-                                        Next Round <ArrowRight size={12} />
-                                    </button>
-                                </div>
+                        {/* Code Inspector */}
+                        <div className="lg:col-span-2 bg-zinc-900/50 p-0 rounded-xl border border-zinc-800 flex flex-col h-full overflow-hidden">
+                            <div className="p-4 border-b border-zinc-800 bg-zinc-900/80 flex justify-between items-center">
+                                <h3 className="font-bold text-slate-300 flex items-center gap-2"><Code size={18} className="text-blue-500" /> Evidence Inspector</h3>
+                                {viewCodeId && <div className="text-xs font-mono text-zinc-500">{viewCodeId}</div>}
                             </div>
 
-                            {/* Code Inspector */}
-                            <div className="bg-slate-800 p-4 rounded-lg flex-1 overflow-hidden flex flex-col">
-                                <h3 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-                                    <Code size={14} /> Code Inspector
-                                </h3>
-                                <div className="flex-1 overflow-y-auto space-y-2 max-h-[200px]">
-                                    {Object.keys(student.codeCache).length === 0 && <span className="text-xs text-slate-500">No code submitted yet.</span>}
-                                    {Object.entries(student.codeCache).map(([qId, code]) => (
-                                        <div key={qId} className="border border-slate-700 rounded p-2 text-xs">
-                                            <div className="flex justify-between mb-1">
-                                                <span className="font-bold text-slate-300">{qId}</span>
-                                                <button onClick={() => setViewCodeId(qId)} className="text-blue-400 hover:underline">View</button>
-                                            </div>
-                                        </div>
+                            <div className="flex-1 flex min-h-0">
+                                {/* Submission List */}
+                                <div className="w-48 border-r border-zinc-800 bg-black/50 overflow-y-auto p-2 space-y-1">
+                                    <div className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-2 py-2">Submissions</div>
+                                    {Object.keys(student.codeCache || {}).length === 0 && <span className="text-slate-500 text-xs px-2 italic">No data yet.</span>}
+                                    {Object.entries(student.codeCache || {}).map(([qid, code]) => (
+                                        <button
+                                            key={qid}
+                                            onClick={() => setViewCodeId(qid)}
+                                            className={`w-full text-left px-3 py-2 rounded-md text-xs font-mono truncate transition-colors ${viewCodeId === qid ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:bg-zinc-800'}`}
+                                        >
+                                            {qid}
+                                        </button>
                                     ))}
                                 </div>
-                            </div>
 
-
-                            {student.contestStatus === 'TERMINATED' && (
-                                <button onClick={onUnlock} className="bg-amber-600 hover:bg-amber-700 text-white p-3 rounded flex items-center justify-center gap-2 transition-colors">
-                                    <Unlock size={18} /> Unlock Student
-                                </button>
-                            )}
-
-                            {student.contestStatus !== 'TERMINATED' && student.contestStatus !== 'SUBMITTED' && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={handleForceSubmit} className="bg-emerald-700 hover:bg-emerald-800 text-white p-3 rounded flex items-center justify-center gap-2 transition-colors">
-                                        <Save size={18} /> Force Submit
-                                    </button>
-                                    <button onClick={handleDisqualify} className="bg-red-700 hover:bg-red-800 text-white p-3 rounded flex items-center justify-center gap-2 transition-colors">
-                                        <AlertOctagon size={18} /> Disqualify
-                                    </button>
+                                {/* Code Viewer */}
+                                <div className="flex-1 bg-[#1e1e1e] overflow-auto p-4 font-mono text-sm relative">
+                                    {viewCodeId ? (
+                                        <pre className="text-zinc-300">{student.codeCache[viewCodeId]}</pre>
+                                    ) : (
+                                        <div className="h-full flex flex-col items-center justify-center text-zinc-700">
+                                            <Code size={48} className="mb-4 opacity-20" />
+                                            <p>Select a submission to inspect code</p>
+                                        </div>
+                                    )}
+                                    {viewCodeId && (
+                                        <button
+                                            onClick={() => setViewCodeId(null)}
+                                            className="absolute top-4 right-4 p-1 bg-zinc-800 rounded text-slate-400 hover:text-white"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
                                 </div>
-                            )}
-
-                            <button onClick={onReset} className="bg-red-900/50 hover:bg-red-900 text-red-200 border border-red-800 p-3 rounded flex items-center justify-center gap-2 mt-auto transition-colors">
-                                <Trash2 size={18} /> Reset System (Clear Data)
-                            </button>
+                            </div>
                         </div>
-
-                        {/* Edit Modal */}
-                        {isEditing && (
-                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                                <div className="bg-slate-900 w-full max-w-md rounded-lg border border-slate-700 shadow-2xl p-6">
-                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                                        <Edit size={20} className="text-blue-500" /> Edit Student
-                                    </h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs text-slate-500 mb-1">Full Name</label>
-                                            <input className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white"
-                                                value={editForm.fullName} onChange={e => setEditForm({ ...editForm, fullName: e.target.value })} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-slate-500 mb-1">Roll Number</label>
-                                            <input className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white"
-                                                value={editForm.rollNumber} onChange={e => setEditForm({ ...editForm, rollNumber: e.target.value })} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-slate-500 mb-1">College</label>
-                                            <input className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white"
-                                                value={editForm.college} onChange={e => setEditForm({ ...editForm, college: e.target.value })} />
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-3 mt-6">
-                                        <button onClick={() => setIsEditing(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded">Cancel</button>
-                                        <button onClick={handleEditSave} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold">Save Changes</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Code Modal */}
-                        {viewCodeId && (
-                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setViewCodeId(null)}>
-                                <div className="bg-slate-900 w-full max-w-3xl rounded-lg border border-slate-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                                    <div className="bg-slate-800 p-3 border-b border-slate-700 flex justify-between items-center">
-                                        <span className="font-mono font-bold text-slate-300">{viewCodeId}</span>
-                                        <button onClick={() => setViewCodeId(null)} className="text-slate-400 hover:text-white"><XCircle size={18} /></button>
-                                    </div>
-                                    <pre className="p-4 text-xs font-mono bg-[#1e1e1e] text-slate-300 overflow-auto max-h-[60vh]">
-                                        {student.codeCache[viewCodeId]}
-                                    </pre>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Full Details Modal */}
-                        {showFullDetails && (
-                            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowFullDetails(false)}>
-                                <div className="bg-slate-900 w-full max-w-2xl rounded-lg border border-slate-700 shadow-2xl p-8" onClick={e => e.stopPropagation()}>
-                                    <div className="flex justify-between items-start mb-6 border-b border-slate-800 pb-4">
-                                        <div>
-                                            <h2 className="text-2xl font-bold text-white mb-1">{student.fullName}</h2>
-                                            <p className="text-slate-400 font-mono">{student.rollNumber} | {student.email}</p>
-                                        </div>
-                                        <button onClick={() => setShowFullDetails(false)} className="text-slate-500 hover:text-white"><X size={24} /></button>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-8">
-                                        <div>
-                                            <h3 className="text-sm font-bold text-blue-500 uppercase mb-3">Academic Info</h3>
-                                            <div className="space-y-2 text-sm text-slate-300">
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">College</span>
-                                                    <span>{student.college}</span>
-                                                </div>
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Department</span>
-                                                    <span>{student.department}</span>
-                                                </div>
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Year</span>
-                                                    <span>{student.year}</span>
-                                                </div>
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Language</span>
-                                                    <span className="uppercase">{student.language}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <h3 className="text-sm font-bold text-emerald-500 uppercase mb-3">Participation Stats</h3>
-                                            <div className="space-y-2 text-sm text-slate-300">
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Status</span>
-                                                    <span className={`font-bold ${student.contestStatus === 'TERMINATED' ? 'text-red-500' : 'text-blue-400'}`}>{student.contestStatus}</span>
-                                                </div>
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Current Round</span>
-                                                    <span>{student.currentRound}</span>
-                                                </div>
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Total Score</span>
-                                                    <span>{totalScore}</span>
-                                                </div>
-                                                <div className="flex justify-between border-b border-slate-800 py-2">
-                                                    <span className="text-slate-500">Violations</span>
-                                                    <span className={student.violationCount > 0 ? 'text-red-400' : ''}>{student.violationCount}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-8">
-                                        <h3 className="text-sm font-bold text-slate-400 uppercase mb-3">Timing & Meta</h3>
-                                        <div className="grid grid-cols-3 gap-4 text-xs bg-slate-800 p-4 rounded-lg">
-                                            <div>
-                                                <div className="text-slate-500 mb-1">Last Seen</div>
-                                                <div className="font-mono text-white">{student.lastSeen ? new Date(student.lastSeen).toLocaleTimeString() : 'Never'}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-slate-500 mb-1">Round Start</div>
-                                                <div className="font-mono text-white">{student.roundStartTime ? new Date(student.roundStartTime).toLocaleTimeString() : '-'}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-slate-500 mb-1">Submission</div>
-                                                <div className="font-mono text-white">{student.submissionTime ? new Date(student.submissionTime).toLocaleTimeString() : '-'}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
-
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {allStudents.length === 0 && (
-                            <div className="col-span-full bg-slate-900 p-12 rounded-lg border border-slate-800 text-center text-slate-500">
-                                <XCircle size={48} className="mx-auto mb-4 opacity-50" />
-                                <p>No active students connected.</p>
-                            </div>
-                        )}
+                    // Dashboard Grid
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {allStudents.map(s => {
-                            const sScore = Object.values(s.scores).reduce((a: number, b: number) => a + b, 0);
+                            const score = Object.values(s.scores || {}).reduce((a: number, b: number | null | undefined) => (a || 0) + (b || 0), 0);
                             return (
-                                <div key={s.rollNumber} onClick={() => setSelectedRollNumber(s.rollNumber)} className="bg-slate-900 p-6 rounded-lg border border-slate-800 hover:border-blue-500 cursor-pointer transition-all shadow-lg hover:shadow-blue-500/20 group relative overflow-hidden">
-                                    <div className={`absolute top-0 left-0 w-1 h-full ${s.contestStatus === 'TERMINATED' ? 'bg-red-500' : s.contestStatus === 'SUBMITTED' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="font-bold text-white group-hover:text-blue-400">{s.fullName}</h3>
-                                            <p className="text-xs text-slate-400">{s.rollNumber}</p>
+                                <div
+                                    key={s.rollNumber}
+                                    onClick={() => setSelectedRollNumber(s.rollNumber)}
+                                    className={`bg-zinc-900/50 p-5 rounded-xl border transition-all cursor-pointer group hover:-translate-y-1 hover:shadow-xl hover:shadow-black/50 ${s.isDisqualified ? 'border-red-900/50 bg-red-900/5' : 'border-zinc-800 hover:border-blue-500/50 hover:bg-zinc-900'}`}
+                                >
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-zinc-800 to-black border border-zinc-700 flex items-center justify-center font-bold text-slate-400 group-hover:text-blue-400 group-hover:border-blue-500/30 transition-colors">
+                                            {s.fullName.charAt(0)}
                                         </div>
-                                        <span className={`text-xs px-2 py-1 rounded font-bold ${s.contestStatus === 'TERMINATED' ? 'bg-red-900 text-red-200' : 'bg-slate-700 text-slate-300'}`}>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${s.contestStatus === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-500'}`}>
                                             {s.contestStatus}
                                         </span>
                                     </div>
-                                    <div className="space-y-2 text-xs text-slate-400">
-                                        <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                                            <span>Email:</span> <span className="text-slate-300 truncate max-w-[120px]">{s.email || '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                                            <span>Start:</span> <span className="text-slate-300 font-mono">{s.roundStartTime ? new Date(s.roundStartTime).toLocaleTimeString() : '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                                            <span>End:</span> <span className="text-slate-300 font-mono">{s.submissionTime ? new Date(s.submissionTime).toLocaleTimeString() : '-'}</span>
-                                        </div>
-                                    </div>
-                                    <div className="mt-4 pt-2 border-t border-slate-800 flex justify-end">
-                                        <span className="text-[10px] text-blue-500 group-hover:underline flex items-center gap-1">
-                                            View Details <ArrowRight size={10} />
-                                        </span>
+                                    <h3 className="font-bold text-zinc-200 truncate group-hover:text-white transition-colors">{s.fullName}</h3>
+                                    <div className="text-xs text-zinc-500 font-mono mb-4">{s.rollNumber}</div>
+
+                                    <div className="flex justify-between items-end border-t border-zinc-800 pt-3">
+                                        <div className="text-xs text-zinc-500">R{s.currentRound}</div>
+                                        <div className="text-xl font-bold text-white tabular-nums">{score}</div>
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
                 )}
+
+                {/* Edit Modal */}
+                {isEditing && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+                        <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-700 w-96 shadow-2xl">
+                            <h3 className="text-xl font-bold mb-6 text-white">Edit Student</h3>
+                            <div className="space-y-4">
+                                <input className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none" value={editForm.fullName || ''} onChange={e => setEditForm({ ...editForm, fullName: e.target.value })} placeholder="Name" />
+                                <input className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none" value={editForm.rollNumber || ''} onChange={e => setEditForm({ ...editForm, rollNumber: e.target.value })} placeholder="Roll Number" />
+                                <input className="w-full bg-black border border-zinc-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none" value={editForm.email || ''} onChange={e => setEditForm({ ...editForm, email: e.target.value })} placeholder="Email" />
+                            </div>
+                            <div className="flex gap-3 mt-8">
+                                <button onClick={() => setIsEditing(false)} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white p-3 rounded-lg font-bold transition-colors">Cancel</button>
+                                <button onClick={handleEditSave} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-lg font-bold transition-colors shadow-lg shadow-blue-900/20">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-        </div >
+        </div>
     );
 };
+
+const DetailRow = ({ label, value, highlight = "text-slate-300" }: { label: string, value: string | number, highlight?: string }) => (
+    <div className="flex justify-between items-center py-2 border-b border-zinc-800/50 last:border-0">
+        <span className="text-slate-500 font-medium">{label}</span>
+        <span className={`${highlight} text-right`}>{value}</span>
+    </div>
+);

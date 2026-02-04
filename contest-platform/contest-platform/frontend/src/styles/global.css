@@ -1,0 +1,98 @@
+/* ═══════════════════════════════════════════════════════════
+   GLOBAL.CSS – Debug Contest Platform
+   Dark editorial theme with sharp accent geometry.
+   ═══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* ── Palette ── */
+  --bg-primary:     #0a0c0f;
+  --bg-secondary:   #111418;
+  --bg-card:        #161a22;
+  --bg-card-hover:  #1c2230;
+  --bg-input:       #0f1216;
+
+  --text-primary:   #e8eaed;
+  --text-secondary: #8a9bb5;
+  --text-muted:     #4f5d6e;
+
+  --accent:         #00d4aa;       /* teal-green primary accent */
+  --accent-dim:     rgba(0,212,170,0.12);
+  --accent-hover:   #00f0c0;
+
+  --danger:         #ff5c6a;
+  --danger-dim:     rgba(255,92,106,0.12);
+  --warning:        #f5a623;
+  --warning-dim:    rgba(245,166,35,0.12);
+  --info:           #5b9bd5;
+  --info-dim:       rgba(91,155,213,0.12);
+
+  --border:         rgba(139,158,180,0.12);
+  --border-focus:   var(--accent);
+
+  /* ── Typography ── */
+  --font-sans:  'Sora', system-ui, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ── Spacing ── */
+  --radius:     10px;
+  --radius-sm:  6px;
+  --radius-lg:  16px;
+
+  /* ── Shadows ── */
+  --shadow:     0 4px 24px rgba(0,0,0,0.3);
+  --shadow-sm:  0 2px 8px  rgba(0,0,0,0.2);
+}
+
+/* ── Reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover { color: var(--accent-hover); }
+
+input, textarea, select {
+  font-family: var(--font-sans);
+}
+
+/* ── Scrollbar (WebKit) ── */
+::-webkit-scrollbar         { width: 6px; }
+::-webkit-scrollbar-track   { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb   { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Utility Classes ── */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+}

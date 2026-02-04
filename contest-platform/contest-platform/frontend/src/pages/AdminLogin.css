@@ -1,0 +1,101 @@
+/* ═══════════════════════════════════════════════════════════
+   AdminLogin.css
+   ═══════════════════════════════════════════════════════════ */
+
+.admin-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  padding: 40px 20px;
+}
+
+.admin-login__card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 44px 36px;
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.admin-login__icon {
+  font-size: 2.2rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.admin-login__card h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.admin-login__card p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+}
+
+.admin-login__error {
+  background: var(--danger-dim);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.8rem;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.admin-login__field {
+  text-align: left;
+  margin-bottom: 16px;
+}
+.admin-login__field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.admin-login__password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-login__password-wrapper .input {
+  padding-right: 45px;
+}
+
+.admin-login__toggle-password {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+  user-select: none;
+}
+
+.admin-login__toggle-password:hover {
+  color: var(--text-secondary);
+}
+
+.admin-login__toggle-password:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

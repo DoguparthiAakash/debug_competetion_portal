@@ -5,14 +5,25 @@ interface AdminButtonProps {
     onLogin: () => void;
 }
 
-const handleAdminAuth = (onSuccess: () => void) => {
-    const user = prompt("Enter Admin Username:");
-    if (!user) return;
-    const pwd = prompt("Enter Admin Password:");
-    if (user === "admin@vsbclub" && pwd === "debugdash@vsb") {
-        onSuccess();
-    } else {
-        alert("Invalid Credentials");
+import api from '../utils/api';
+
+const handleAdminAuth = async (onSuccess: () => void) => {
+    const username = prompt("Enter Admin Username:");
+    if (!username) return;
+    const password = prompt("Enter Admin Password:");
+    if (!password) return;
+
+    try {
+        const res = await api.post('/admin/login', { username, password });
+        if (res.data.success) {
+            sessionStorage.setItem('adminToken', res.data.token);
+            onSuccess();
+        } else {
+            alert("Invalid Credentials");
+        }
+    } catch (err) {
+        alert("Login failed. Check console.");
+        console.error(err);
     }
 };
 

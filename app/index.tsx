@@ -9,6 +9,7 @@ import { TerminatedScreen } from './src/components/TerminatedScreen';
 import { ResultScreen } from './src/components/ResultScreen';
 import { Header } from './src/components/Header';
 import { Instructions } from './src/components/Instructions';
+import { Landing } from './src/components/Landing';
 import { ContestEnvironment } from './src/components/ContestEnvironment';
 import { SocketProvider, useSocket } from './src/utils/SocketContext';
 
@@ -68,7 +69,7 @@ const AppContent = () => {
     const handler = (data: { command: string, payload: any }) => {
       console.log("Received Command:", data);
       if (data.command === 'force_terminate') {
-        setStudent(prev => prev ? ({ ...prev, contestStatus: 'TERMINATED', violationCount: 99 }) : null);
+        setStudent(prev => prev ? ({ ...prev, contestStatus: 'TERMINATED', violationAttempts: 99, isDisqualified: true }) : null);
       }
       // Handle other commands (add_time etc) if implemented in backend fully
       // But currently backend just emits command. Frontend needs to handle logic.
@@ -84,9 +85,16 @@ const AppContent = () => {
     saveState(s);
     // Real-time Sync
     if (socket && isConnected) {
-      socket.emit('update_progress', s);
+      // socket.emit('update_progress', s); // Deprecated: Let backend handle updates via API calls or specific events?
+      // Actually keeping it for now if backend listens to it, but backend server.js likely doesn't have 'update_progress' listener 
+      // based on my memory. It has 'register_student'. 
+      // Let's check server.js later. For now, we rely on API calls for critical updates.
     }
   };
+
+  const [showRegister, setShowRegister] = useState(false);
+
+  // ... (keep existing effects)
 
   const handleAdminLogin = () => setIsAdmin(true);
 
@@ -97,7 +105,7 @@ const AppContent = () => {
       onUpdateStudent={updateStudent}
       onUnlock={() => {
         if (student) {
-          const updated = { ...student, contestStatus: 'ACTIVE' as ContestStatus, violationCount: 0 };
+          const updated = { ...student, contestStatus: 'ACTIVE' as ContestStatus, violationAttempts: 0, isDisqualified: false };
           updateStudent(updated);
           setIsAdmin(false);
         }
@@ -107,30 +115,39 @@ const AppContent = () => {
           localStorage.removeItem('contest_state');
           setStudent(null);
           setIsAdmin(false);
+          setShowRegister(false);
         }
       }}
     />;
   }
 
-  if (!student) return <Registration onRegister={updateStudent} onAdminLogin={handleAdminLogin} />;
+  if (!student) {
+    if (showRegister) {
+      return <Registration onRegister={updateStudent} onAdminLogin={handleAdminLogin} />;
+    }
+    return <Landing onEnter={() => setShowRegister(true)} onAdmin={handleAdminLogin} />;
+    // Registration has onAdminLogin. Landing has onAdmin. 
+    // Let's pass handleAdminLogin to Landing if we want direct admin access. 
+  }
 
   if (student.contestStatus === 'TERMINATED') {
-    return <TerminatedScreen reason="Multiple violations of full-screen protocol detected." onAdminLogin={handleAdminLogin} />;
+    return <TerminatedScreen student={student} onReturnHome={() => setStudent(null)} />; // Need to reset student to go home? or just refresh?
   }
 
   if (student.contestStatus === 'SUBMITTED') {
-    return <ResultScreen student={student} onAdminLogin={handleAdminLogin} />;
+    return <ResultScreen student={student} />;
   }
 
-  if (student.contestStatus === 'INSTRUCTIONS') {
+  if (student.contestStatus === 'INSTRUCTIONS' || student.contestStatus === 'REGISTERING') { // Handle REGISTERING status if leftover
     return (
       <>
-        <Header onAdminLogin={handleAdminLogin} />
-        <Instructions onStart={() => {
+        <Header student={student} onLogout={() => setStudent(null)} />
+        <Instructions round={student.currentRound} onStart={() => {
           // Enter fullscreen
           document.documentElement.requestFullscreen().catch(() => { });
-          updateStudent({ ...student, contestStatus: 'ACTIVE' });
-        }} onAdminLogin={handleAdminLogin} />
+          const updated = { ...student, contestStatus: 'ACTIVE' as ContestStatus };
+          updateStudent(updated);
+        }} />
       </>
     );
   }

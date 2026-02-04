@@ -1,0 +1,244 @@
+/* ═══════════════════════════════════════════════════════════
+   LandingPage.css
+   ═══════════════════════════════════════════════════════════ */
+
+.landing {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* ── Decorative geometry ── */
+.landing__geo {
+  position: absolute;
+  border: 1px solid var(--accent-dim);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: geo-pulse 8s ease-in-out infinite;
+}
+.landing__geo--1 {
+  width: 500px; height: 500px;
+  top: -120px; right: -180px;
+  animation-delay: 0s;
+}
+.landing__geo--2 {
+  width: 320px; height: 320px;
+  bottom: 60px; left: -100px;
+  animation-delay: 2s;
+  background: radial-gradient(circle at center, var(--accent-dim) 0%, transparent 70%);
+}
+.landing__geo--3 {
+  width: 180px; height: 180px;
+  top: 40%; right: 12%;
+  border-color: var(--info-dim);
+  animation-delay: 4s;
+}
+
+@keyframes geo-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50%      { transform: scale(1.08); opacity: 0.7; }
+}
+
+/* ── Nav ── */
+.landing__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px;
+  position: relative;
+  z-index: 2;
+}
+.landing__logo {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.landing__logo-icon {
+  color: var(--accent);
+  font-size: 1.4rem;
+}
+
+/* ── Hero ── */
+.landing__hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+  position: relative;
+  z-index: 2;
+}
+
+.landing__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-bottom: 28px;
+  letter-spacing: 0.02em;
+}
+.landing__badge-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dot-blink 2s ease-in-out infinite;
+}
+@keyframes dot-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+.landing__title {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  letter-spacing: -0.02em;
+}
+.landing__title-accent {
+  color: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #5b9bd5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.landing__subtitle {
+  max-width: 540px;
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  margin-bottom: 36px;
+  line-height: 1.7;
+}
+
+/* ── Stats ── */
+.landing__stats {
+  display: flex;
+  gap: 48px;
+  margin-bottom: 40px;
+}
+.landing__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.landing__stat-num {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+.landing__stat-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+/* ── CTA ── */
+.landing__cta {
+  margin-bottom: 32px;
+}
+
+/* ── Language pills ── */
+.landing__langs {
+  display: flex;
+  gap: 10px;
+}
+.lang-pill {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.lang-pill--c    { background: var(--info-dim);    color: var(--info); }
+.lang-pill--java { background: var(--warning-dim); color: var(--warning); }
+.lang-pill--py   { background: var(--accent-dim);  color: var(--accent); }
+
+/* ── Footer ── */
+.landing__footer {
+  text-align: center;
+  padding: 24px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  position: relative;
+  z-index: 2;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED BUTTON STYLES (used across all pages)
+   ═══════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 10px 22px;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.btn--primary {
+  background: var(--accent);
+  color: #0a0c0f;
+}
+.btn--primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 20px var(--accent-dim);
+}
+.btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn--ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.btn--danger {
+  background: var(--danger);
+  color: #fff;
+}
+.btn--danger:hover {
+  background: #ff3a4a;
+}
+.btn--lg {
+  padding: 14px 36px;
+  font-size: 1rem;
+}
+.btn--sm {
+  padding: 6px 14px;
+  font-size: 0.78rem;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .landing__stats { gap: 24px; }
+  .landing__geo--1 { width: 300px; height: 300px; }
+}
